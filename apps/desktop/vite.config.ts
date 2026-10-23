@@ -22,7 +22,7 @@ async function cachedCompilerPass(command: string) {
     command,
     cacheRoot: path.join(__dirname, 'node_modules/.cache/hermes-react-compiler'),
     base: __dirname,
-    toolchain: [path.resolve(__dirname, '../../package-lock.json'), fileURLToPath(import.meta.url)]
+    toolchain: [path.resolve(__dirname, '../../bun.lock'), fileURLToPath(import.meta.url)]
   })
 }
 

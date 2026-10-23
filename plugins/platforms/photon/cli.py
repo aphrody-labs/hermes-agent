@@ -17,7 +17,7 @@ from hermes_cli.colors import Colors, color
 from . import auth as photon_auth
 from .adapter import sidecar_deps_installed
 from hermes_constants import find_node_executable, with_hermes_node_path
-from .sidecar_paths import _NPM_ERROR_LOG_MAX_CHARS, _npm_error_log, _sidecar_dir
+from .sidecar_paths import INSTALL_MARKER, _NPM_ERROR_LOG_MAX_CHARS, _npm_error_log, _sidecar_dir
 import contextlib
 
 
@@ -305,28 +305,29 @@ def _install_sidecar() -> int:
         print(f"Could not prepare Photon dependencies: {exc}", file=sys.stderr)
         return 1
     # spectrum-ts is pinned exactly (the SDK ships breaking majors); upgrades are deliberate —
-    # never `@latest` (see README "Upgrading spectrum-ts"). `npm ci` installs the lockfile
-    # verbatim; `npm install` is the fallback for a missing/drifted lockfile.
-    print(f"  $ cd {_sidecar_dir()} && {npm} ci")
+    # never `@latest` (see README "Upgrading spectrum-ts"). A frozen install uses the lockfile
+    # verbatim; a plain `bun install` is the fallback for a missing/drifted lockfile.
+    print(f"  $ cd {_sidecar_dir()} && {npm} install --frozen-lockfile")
 
-    def _run(verb: str) -> subprocess.CompletedProcess:
+    def _run(*verb: str) -> subprocess.CompletedProcess:
         # stdout streams to the terminal; stderr is captured so the failure reason can be
         # persisted for check_requirements() to surface later.
         proc = subprocess.run(
-            [npm, verb], stdin=subprocess.DEVNULL, cwd=str(_sidecar_dir()), check=False, stderr=subprocess.PIPE, text=True, env=env)
+            [npm, *verb], stdin=subprocess.DEVNULL, cwd=str(_sidecar_dir()), check=False, stderr=subprocess.PIPE, text=True, env=env)
         if proc.stderr:
             print(proc.stderr, end="", file=sys.stderr)
         return proc
-    proc = _run("ci")
+    proc = _run("install", "--frozen-lockfile")
     if proc.returncode != 0:
-        print(f"  npm ci failed — falling back to:  {npm} install")
+        print(f"  frozen install failed — falling back to:  {npm} install")
         proc = _run("install")
     error = (proc.stderr or "").strip()[:_NPM_ERROR_LOG_MAX_CHARS]  # bounded to what check_requirements surfaces
     if proc.returncode != 0:
-        print("npm install failed", file=sys.stderr)
+        print("bun install failed", file=sys.stderr)
     with contextlib.suppress(OSError):
         if proc.returncode == 0:
             _npm_error_log().unlink()
+            (_sidecar_dir() / "node_modules" / INSTALL_MARKER).touch()
         elif error:
             _npm_error_log().write_text(error, encoding="utf-8")
     return proc.returncode

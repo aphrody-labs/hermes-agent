@@ -109,7 +109,8 @@ export function checkDistBuilt(distDir) {
 // stalled process creation on Windows (AV, memory pressure) used to abort the
 // whole update — the guard must not be the least reliable step in the build.
 function verifyChunksParse(assetsDir) {
-  const nodeBin = process.env.NODE || process.execPath || "node"
+  // Under Bun, `process.env.NODE` can name a user's `node.cmd` shim that cannot be spawned directly.
+  const nodeBin = process.versions.bun ? process.execPath : process.env.NODE || process.execPath || "node"
   const checker = join(import.meta.dirname, "check-chunks-parse.mjs")
   const probe = spawnSync(nodeBin, ["--experimental-vm-modules", checker, assetsDir], {
     encoding: "utf8",

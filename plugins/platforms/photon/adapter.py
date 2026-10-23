@@ -50,7 +50,7 @@ from utils import atomic_json_write
 from .auth import load_project_credentials
 # Sidecar dir resolution is lazy (never at import): it probes the filesystem and may
 # mirror files. Tests monkeypatch sidecar_paths._SIDECAR_DIR.
-from .sidecar_paths import _NPM_ERROR_LOG_MAX_CHARS, _lock_newer_than_install, _npm_error_log, _sidecar_dir
+from .sidecar_paths import INSTALL_MARKER, _NPM_ERROR_LOG_MAX_CHARS, _lock_newer_than_install, _npm_error_log, _sidecar_dir
 from .sidecar_paths import dir_writable as _dir_writable
 from hermes_constants import find_node_executable, with_hermes_node_path
 import contextlib
@@ -306,6 +306,7 @@ def _reinstall_sidecar_deps() -> None:
         logger.error("[photon] sidecar dependency reinstall timed out after %ss", _NPM_REINSTALL_TIMEOUT)
         return
     if result.returncode == 0:
+        (_sidecar_dir() / "node_modules" / INSTALL_MARKER).touch()
         logger.info("[photon] sidecar dependencies reinstalled from lockfile")
     else:
         logger.error("[photon] sidecar dependency reinstall failed: %s", (result.stderr or result.stdout or "").strip())

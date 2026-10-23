@@ -22,8 +22,9 @@ logger = logging.getLogger(__name__)
 SOURCE_SIDECAR_DIR = Path(__file__).parent / "sidecar"
 # Files that define the sidecar; node_modules is deliberately absent (baked on managed
 # images or installed by npm in the mirror).
-_MIRROR_FILES = ("index.mjs", "package.json", "package-lock.json", "patch-spectrum-mixed-attachments.mjs")
+_MIRROR_FILES = ("index.mjs", "package.json", "bun.lock", "bunfig.toml", "patch-spectrum-mixed-attachments.mjs")
 # Tests monkeypatch these module globals directly; the accessors honor a non-None value.
+INSTALL_MARKER = ".hermes-installed"
 _SIDECAR_DIR: Optional[Path] = None
 # Written by `hermes photon install-sidecar` on npm failure so check_requirements() can
 # surface the root cause later; cleared on success.
@@ -47,11 +48,11 @@ _dir_writable = dir_writable
 
 
 def _lock_newer_than_install(sidecar_dir: Path) -> bool:
-    """True when the committed lockfile postdates npm's install marker
-    (``node_modules/.package-lock.json``) — the same signal ``npm ci`` uses. False on any
-    stat failure so an odd filesystem never blocks start."""
-    lockfile = sidecar_dir / "package-lock.json"
-    marker = sidecar_dir / "node_modules" / ".package-lock.json"
+    """True when the committed lockfile postdates the install marker Hermes writes after each
+    successful ``bun install``. False on any stat failure (no marker yet included) so an odd
+    filesystem never blocks start."""
+    lockfile = sidecar_dir / "bun.lock"
+    marker = sidecar_dir / "node_modules" / INSTALL_MARKER
     try:
         return lockfile.stat().st_mtime > marker.stat().st_mtime
     except OSError:

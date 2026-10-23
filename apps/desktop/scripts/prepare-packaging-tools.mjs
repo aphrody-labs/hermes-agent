@@ -20,9 +20,10 @@ export function pinnedPackageRoot(source, name) {
     directory = parent
   }
   const installed = JSON.parse(fs.readFileSync(path.join(directory, 'package.json'), 'utf8'))
-  const lock = JSON.parse(fs.readFileSync(path.join(source, 'package-lock.json'), 'utf8'))
-  const key = path.relative(source, directory).split(path.sep).join('/')
-  if (!lock.packages?.[key] || lock.packages[key].version !== installed.version || installed.name !== name) {
+  // bun.lock keys a package by its placement and records `name@version` as the first tuple entry.
+  const lock = Bun.JSONC.parse(fs.readFileSync(path.join(source, 'bun.lock'), 'utf8'))
+  const locked = Object.values(lock.packages ?? {}).some(([resolution]) => resolution === `${name}@${installed.version}`)
+  if (!locked || installed.name !== name) {
     throw new Error(`Installed ${name} is not the source's lock-pinned package; prepare Node dependencies first`)
   }
   return directory
