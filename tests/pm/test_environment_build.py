@@ -308,9 +308,9 @@ def test_worker_sync_reuses_unions_and_reports_real_lock_drift(locked_project, b
     pm.lock_project(source, offline=True, explicit=True)
     assert pm.check() == ["venv: out of sync with uv.lock"]
     lock = Lockfile(paths.lockfile_path())
-    lock.set_pin("node", "fixture", {"any": {"url": "https://example.invalid/node", "sha256": "0" * 64}})
+    lock.set_pin("ffmpeg", "fixture", {"any": {"url": "https://example.invalid/ffmpeg", "sha256": "0" * 64}})
     lock.save()
-    assert "node: not installed or outdated" in pm.check()
+    assert "ffmpeg: not installed or outdated" in pm.check()
     assert selected_venv(source) == second
     assert list(sys.path) == parent_path and dict(os.environ) == parent_env
     assert not {"base_dep", "chosen_dep", "other_dep"} & sys.modules.keys()
