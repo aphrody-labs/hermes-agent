@@ -30,8 +30,8 @@ def test_isolated_worker_preserves_install_error(client, monkeypatch):
     engine = importlib.import_module("pm.install")
     monkeypatch.setattr(engine, "ensure", lambda *a, **kw: pytest.fail("engine ran in caller"))
     with pytest.raises(InstallError) as caught:
-        client.ensure("node", explicit=True)
-    assert caught.value.package == "node"
+        client.ensure("ffmpeg", explicit=True)
+    assert caught.value.package == "ffmpeg"
     assert caught.value.cause == "not in the lockfile"
     assert caught.value.remedy == "add it with `hermes pm lock --bump`"
     assert not paths.facts_path().exists()
@@ -45,11 +45,11 @@ def test_refused_or_already_paused_install_does_not_acquire_runtime(client, monk
     monkeypatch.setattr(client, "runtime_command", lambda path, **kwargs: pytest.fail("refusal acquired PM runtime"))
     monkeypatch.setenv("HERMES_DISABLE_LAZY_INSTALLS", "1")
     with pytest.raises(InstallError, match="lazy installs are disabled"):
-        client.ensure("node")
+        client.ensure("ffmpeg")
     paused = threading.Event()
     paused.set()
     with pytest.raises(DownloadPaused):
-        client.ensure("node", explicit=True, pause_event=paused)
+        client.ensure("ffmpeg", explicit=True, pause_event=paused)
 
 
 def _current_environment(tmp_path, monkeypatch, members):
@@ -501,7 +501,7 @@ def test_invalid_arguments_keep_the_engine_exception_type(client):
 def test_worker_death_reports_transport_failure(client, monkeypatch, isolated_python):
     monkeypatch.setattr(client, "runtime_command", lambda path, **kwargs: [str(isolated_python), "-I", "-c", "import os; os._exit(7)"])
     with pytest.raises(InstallError, match="worker.*result"):
-        client.ensure("node", explicit=True)
+        client.ensure("ffmpeg", explicit=True)
 
 
 def test_foreign_checkout_sync_uses_its_own_pm_generation(client, tmp_path, monkeypatch, isolated_python):

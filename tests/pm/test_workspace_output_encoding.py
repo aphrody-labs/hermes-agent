@@ -73,15 +73,15 @@ def test_uv_failure_retains_utf8_build_diagnostic(
     assert getattr(completed[-1], stream) == expected + "\n"
 
 
-@pytest.mark.parametrize("install_cmd", ["ci", "install"])
+@pytest.mark.parametrize("install_cmd", [["install", "--frozen-lockfile"], ["install"]])
 @pytest.mark.parametrize("stream", ["stdout", "stderr"])
 @pytest.mark.parametrize("returncode", [0, 17])
 def test_node_sidecar_retains_output_and_exit_status(
     tmp_path, monkeypatch, legacy_locale_child, install_cmd, stream, returncode
 ):
     (tmp_path / "package.json").write_text("{}", encoding="utf-8")
-    if install_cmd == "ci":
-        (tmp_path / "package-lock.json").write_text("{}", encoding="utf-8")
+    if install_cmd == ["install", "--frozen-lockfile"]:
+        (tmp_path / "bun.lock").write_text("{}", encoding="utf-8")
     monkeypatch.setattr(
         importlib.import_module("pm.install"), "lazy_installs_allowed", lambda: True
     )
@@ -90,9 +90,13 @@ def test_node_sidecar_retains_output_and_exit_status(
     completed = []
     npm_dir = tmp_path / "pm-bin"
     npm_dir.mkdir()
-    npm = npm_dir / ("npm.cmd" if os.name == "nt" else "npm")
+    npm = npm_dir / ("bun.exe" if os.name == "nt" else "bun")
     npm.write_text("process boundary fixture", encoding="utf-8")
     npm.chmod(0o755)
+    monkeypatch.setenv("HERMES_BUN", str(npm))
+    from pm import bun_runtime
+
+    bun_runtime.executable.cache_clear()
     context = Runner("npm", dict(os.environ, PATH=str(npm_dir)))
     acquisitions = []
 
@@ -101,7 +105,7 @@ def test_node_sidecar_retains_output_and_exit_status(
         return context
 
     def run_npm(cmd, **kwargs):
-        assert cmd == [str(npm), install_cmd, "--no-audit", "--no-fund"]
+        assert cmd == [str(npm), *install_cmd]
         assert kwargs["env"] == context.env
         assert kwargs["cwd"] == str(tmp_path)
         # Keep the real Runner and decoding path; only replace npm's process
@@ -119,7 +123,8 @@ def test_node_sidecar_retains_output_and_exit_status(
     assert completed[0].returncode == returncode
     expected = diagnostic + "�"
     if returncode:
-        assert error == f"npm {install_cmd} exited {returncode}: {expected}"
+        assert error == f"bun {install_cmd[0]} exited {returncode}: {expected}"
     else:
         assert error is None
     assert getattr(completed[-1], stream) == expected + "\n"
+    bun_runtime.executable.cache_clear()
