@@ -4,9 +4,9 @@
   "private": true,
   "scripts": {
     "docusaurus": "docusaurus",
-    "prestart": "node scripts/prebuild.mjs",
+    "prestart": "bun scripts/prebuild.mjs",
     "start": "docusaurus start",
-    "prebuild": "node scripts/prebuild.mjs",
+    "prebuild": "bun scripts/prebuild.mjs",
     "build": "docusaurus build",
     "build:fast": "docusaurus build --locale en",
     "swizzle": "docusaurus swizzle",

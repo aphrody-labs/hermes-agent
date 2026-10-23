@@ -1,0 +1,17 @@
+[install]
+linker = "hoisted"
+
+# Supply-chain hold: a version is resolved only once it has been published long enough.
+minimumReleaseAge = 1209600
+minimumReleaseAgeExcludes = [
+  "fast-uri",
+  "js-yaml",
+  "nanoid",
+  "mermaid",
+  "dompurify",
+  "minimatch",
+  "brace-expansion",
+  "undici",
+  "@nous-research/image-size",
+  "http-cache-semantics",
+]
