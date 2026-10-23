@@ -268,6 +268,15 @@ def _managed_launcher(command: str) -> Optional[tuple[str, list[str]]]:
     import pm
 
     package = _MANAGED_LAUNCHERS[command]
+    if package == "npm":
+        # Bun is the JavaScript runtime. `npx` stays bare here: `_preflight_stdio_command`
+        # turns it into `bun x` after the OSV preflight has read the npx argv.
+        if command == "npx":
+            return None
+        from pm import bun_runtime
+
+        binary = bun_runtime.require()
+        return str(binary), [str(binary.parent)]
     if pm.get_package(package).missing_reason(pm.current_target()) is not None:
         return None
     pm.ensure(package)
@@ -282,20 +291,6 @@ def _managed_launcher(command: str) -> Optional[tuple[str, list[str]]]:
     if executable is None:
         raise RuntimeError(f"Hermes-managed {command} is not installed; run `hermes pm install {package}`")
     return executable, dirs
-
-
-def _outside_package(launcher: str, managed: str, dirs: list[str]) -> tuple[str, list[str]]:
-    """Hermes's npm/node *launcher* and toolchain *dirs*, swapped for PM's copies outside a
-    sealed Windows payload (``pm.user_facing.copies``). npm starts each package bin through
-    cmd.exe, and cmd.exe cannot start the packaged ``node.exe``."""
-    from pm.user_facing import copies
-
-    moved = copies(dirs)
-    if moved == dirs:
-        return managed, dirs
-    # Plain which(): Hermes's own copy dirs hold one real node.exe/npx.cmd, so the parent's
-    # PATHEXT is the right question (unlike a user server's config env, see _which_with_config_pathext).
-    return shutil.which(launcher, path=os.pathsep.join(moved)) or managed, moved
 
 
 def _is_hermes_managed_bin_dir(directory: str) -> bool:
@@ -323,8 +318,8 @@ def _pathext_suffixes(env: Optional[dict] = None, *, windows: Optional[bool] = N
     """Executable suffixes a bare name resolves through, in order. The child env's PATHEXT
     comes first (``shutil.which`` reads the PARENT's, so a per-profile config value never
     reaches a plain ``which`` — same source as ``_which_with_config_pathext``), then the
-    parent's, then the OS default. POSIX appends nothing. ``windows`` injectable for the
-    same testability reason as ``_npx_bin_candidates``."""
+    parent's, then the OS default. POSIX appends nothing. ``windows`` is injectable so the
+    branch is testable without patching ``os.name`` process-wide."""
     is_windows = os.name == "nt" if windows is None else windows
     if not is_windows:
         return [""]
@@ -379,8 +374,6 @@ def _resolve_stdio_command(command: str, env: dict) -> tuple[str, dict]:
     managed = _managed_launcher(launcher) if launcher in _MANAGED_LAUNCHERS else None
     if managed is not None:
         resolved_command, dirs = managed
-        if _MANAGED_LAUNCHERS[launcher] == "npm":
-            resolved_command, dirs = _outside_package(launcher, resolved_command, dirs)
         # Moved to the front even when already on PATH behind a user's copy.
         keys = {os.path.normcase(d) for d in dirs}
         rest = [p for p in resolved_env.get("PATH", "").split(os.pathsep) if p and os.path.normcase(p) not in keys]
@@ -405,150 +398,6 @@ def _resolve_stdio_command(command: str, env: dict) -> tuple[str, dict]:
     if command_dir:
         resolved_env = _prepend_path(resolved_env, command_dir)
     return resolved_command, resolved_env
-
-
-def _npx_bin_candidates(bin_dir: str, name: str, *, windows: Optional[bool] = None) -> list:
-    """Launcher paths to try for *name* inside an npx cache's ``.bin``, in order. On Windows that
-    directory holds the extensionless sh script plus ``<name>.cmd``/``<name>.ps1``; the sh one
-    cannot be spawned there and ``os.access(X_OK)`` is only an existence check, so select by
-    extension (same precedence as ``hermes_constants._candidate_node_command_names``). ``windows``
-    is injectable so the branch is testable without patching ``os.name`` process-wide."""
-    is_windows = os.name == "nt" if windows is None else windows
-    if is_windows:
-        return [os.path.join(bin_dir, name + ext) for ext in (".cmd", ".exe")]
-    return [os.path.join(bin_dir, name)]
-
-
-def _npx_cached_bin(args: list) -> Optional[tuple]:
-    """Resolve ``npx -y <pkg>`` to the already-installed binary, or None.
-
-    ``npx`` resolves the package and then FORKS, staying resident as the real server's parent
-    for nothing (~48 MB private memory per MCP server, measured); Hermes already supervises the
-    child (shared death supervisor). When the package is in npx's cache we spawn its binary
-    directly. Deliberately conservative — None (caller keeps plain ``npx``, so a cold machine
-    still installs) for a cache miss, a version pin (``pkg@1.2.3``), extra npx flags, a manifest
-    without one obvious bin, or any unreadable cache entry. Returns ``(binary_path, remaining_args)``."""
-    if not isinstance(args, list) or not args:
-        return None
-
-    rest = list(args)
-    while rest and rest[0] in ("-y", "--yes"):
-        rest.pop(0)
-    if not rest:
-        return None
-    # `npx pkg -y` (flag AFTER the spec) would hand the server a flag npx would have eaten.
-    if any(str(a) in ("-y", "--yes") for a in rest[1:]):
-        return None
-
-    spec = str(rest[0])
-    # Scoped names keep their leading '@', so only an '@' AFTER the scope is a version separator.
-    if "@" in (spec.removeprefix("@")):
-        return None
-    if not spec or spec.startswith("-"):
-        return None
-
-    cache_root = os.environ.get("npm_config_cache") or os.path.join(os.path.expanduser("~"), ".npm")
-    npx_root = os.path.join(cache_root, "_npx")
-    if not os.path.isdir(npx_root):
-        return None
-    try:
-        entries = os.listdir(npx_root)
-    except OSError:
-        return None
-
-    for entry in entries:
-        manifest = os.path.join(npx_root, entry, "package.json")
-        try:
-            with open(manifest, "r", encoding="utf-8-sig") as fh:
-                deps = (json.load(fh) or {}).get("dependencies") or {}
-        except (OSError, ValueError, TypeError):
-            continue
-        if spec not in deps:
-            continue
-        pkg_json = os.path.join(npx_root, entry, "node_modules", spec, "package.json")
-        try:
-            with open(pkg_json, "r", encoding="utf-8-sig") as fh:
-                bin_field = (json.load(fh) or {}).get("bin")
-        except (OSError, ValueError, TypeError):
-            continue
-        if isinstance(bin_field, str):
-            names = [os.path.basename(spec)]
-        elif isinstance(bin_field, dict) and len(bin_field) == 1:
-            names = list(bin_field.keys())
-        else:
-            continue  # zero or several bins: which one npx would pick is not ours to guess
-        bin_dir = os.path.join(npx_root, entry, "node_modules", ".bin")
-        for candidate in _npx_bin_candidates(bin_dir, names[0]):
-            if os.path.exists(candidate) and os.access(candidate, os.X_OK):
-                return candidate, rest[1:]
-    return None
-
-
-def _packaged_npx_entry(command: str, args: list) -> Optional[tuple]:
-    """``(node.exe, [bin script, *args])`` for ``npx [-y] <pkg> ...`` when *command* is a sealed
-    Windows payload's own npx, else None.
-
-    That npx starts the package bin through cmd.exe, and cmd.exe cannot start the packaged
-    ``node.exe`` (``pm.user_facing``). Hermes gets here only without a host Node and without
-    a copy that PM may make. The payload's Python CAN start the packaged ``node.exe``, so the
-    package is installed with npm's own script and the bin's script runs on that node.
-    Install scripts stay off, because npm runs them through cmd.exe too. None keeps plain
-    npx (an honest failure) for any other argv shape, a non-registry spec (git, URL, path:
-    npm installs those under a name the spec does not show), a failed install, or an
-    unclear bin.
-
-    Like npx, only an exact version is reused as installed. Any other spec re-resolves on
-    each start and keeps the previous install when npm cannot run (offline).
-    """
-    from pm.user_facing import _sealed_dirs, applies
-
-    if not applies() or not isinstance(args, list):
-        return None
-    npm_dirs = {os.path.normcase(d): d for d in _sealed_dirs("npm")}
-    npm_dir = npm_dirs.get(os.path.normcase(os.path.dirname(str(command))))
-    node = shutil.which("node", path=os.pathsep.join(_sealed_dirs("node")))
-    npm_cli = os.path.join(npm_dir or "", "node_modules", "npm", "bin", "npm-cli.js")
-    if npm_dir is None or node is None or not os.path.isfile(npm_cli):
-        return None
-    rest = list(args)
-    while rest and rest[0] in ("-y", "--yes"):
-        rest.pop(0)
-    spec = str(rest[0]) if rest else ""
-    if not spec or spec.startswith("-") or any(str(a) in ("-y", "--yes") for a in rest[1:]):
-        return None
-    if ":" in spec or spec.startswith((".", "/", "\\", "~")) or ("/" in spec and not spec.startswith("@")):
-        return None
-    scope, _, bare = spec.rpartition("/") if spec.startswith("@") else ("", "", spec)
-    base, _, version = bare.partition("@")
-    name = (f"{scope}/" if scope else "") + base
-    from hermes_constants import get_hermes_home
-
-    prefix = Path(get_hermes_home()) / "cache" / "mcp-npx" / hashlib.sha256(spec.encode()).hexdigest()[:16]
-    manifest = prefix / "node_modules" / name / "package.json"
-    exact = re.fullmatch(r"\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.+-]+)?", version) is not None
-    if not (exact and manifest.is_file()):
-        install = [node, npm_cli, "install", "--prefix", str(prefix), "--no-save", "--ignore-scripts",
-                   "--no-audit", "--no-fund", "--loglevel=error", spec]
-        try:
-            result = subprocess.run(install, capture_output=True, text=True, encoding="utf-8", errors="replace",
-                                    stdin=subprocess.DEVNULL, timeout=600, check=False)
-        except (subprocess.SubprocessError, OSError) as exc:  # hang, unwritable prefix, AV lock, node not startable
-            result = subprocess.CompletedProcess(install, 1, "", str(exc))
-        if result.returncode != 0 or not manifest.is_file():
-            logger.warning("npm install of %s with the packaged node failed: %s", spec,
-                           (result.stderr or result.stdout).strip()[-500:])
-            if not manifest.is_file():
-                return None
-    try:
-        bin_field = (json.loads(manifest.read_text(encoding="utf-8-sig")) or {}).get("bin")
-    except (OSError, ValueError):
-        return None
-    if isinstance(bin_field, dict):
-        bin_field = bin_field.get(base) or (
-            next(iter(bin_field.values())) if len(bin_field) == 1 else None)
-    if not isinstance(bin_field, str):
-        return None
-    return node, [str(manifest.parent / bin_field), *rest[1:]]
 
 
 def _interpolate_env_vars(value):

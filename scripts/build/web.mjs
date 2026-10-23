@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+#!/usr/bin/env bun
 // Pure dashboard compilation; icon/dependency preparation belongs to callers.
 import { cpSync, existsSync, mkdirSync, readFileSync, statSync } from 'node:fs'
 import os from 'node:os'

@@ -5,14 +5,14 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "node ../scripts/build/web.mjs",
+    "build": "bun ../scripts/build/web.mjs",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
-    "fix": "npm run lint:fix",
+    "fix": "bun run lint:fix",
     "preview": "vite preview",
     "typecheck": "tsc -b . --noEmit",
     "test": "vitest run",
-    "check": "npm run typecheck && npm run test && npm run lint"
+    "check": "bun run typecheck && bun run test && bun run lint"
   },
   "dependencies": {
     "@hermes/shared": "file:../apps/shared",

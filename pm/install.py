@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
-from pm import paths
+from pm import bun_runtime, paths
 from pm.downloader import DownloadPaused, ProgressFn
 from pm.filesystem import native, remove_tree, retry_held
 from pm.lock import Facts, Lockfile
@@ -118,6 +118,9 @@ class InstalledPackage:
 
 def installed_package(name: str, *, allow_outdated: bool = False) -> InstalledPackage | None:
     """Read the selected PM entry without installing or changing its facts."""
+    if name in bun_runtime.JS_PACKAGES:
+        binary = bun_runtime.executable()
+        return InstalledPackage(binary.parent, bun_runtime.version(), binary) if binary else None
     package = get_package(name)
     if package.internal:
         raise ValueError(f"{name} is internal PM tooling, not an application package")
@@ -537,6 +540,9 @@ def ensure(
     ``progress(stage, done, total, label)`` reports the slow parts of an
     install to a UI, including ordered multi-archive labels.
     """
+    if name in bun_runtime.JS_PACKAGES:
+        bun_runtime.require()
+        return Runner(name, compose_env([bun_runtime.env_diff()], base=base_env))
     if isinstance(get_package(name), StatePackage):
         if _operation is not None:
             # Python construction can provision tools itself. Drop both the
@@ -547,7 +553,7 @@ def ensure(
 
     lockfile = _lockfile()
     target = current_target()
-    chain = walk([name])
+    chain = [package for package in walk([name]) if package.name not in bun_runtime.JS_PACKAGES]
     checked = _operation.checked if _operation is not None else set()
     if _operation is not None:
         _operation.lock()
@@ -588,6 +594,9 @@ def env_for(*names: str, base_env: Optional[dict] = None) -> dict[str, str]:
             continue
         for package in chain:
             if package.internal:
+                continue
+            if package.name in bun_runtime.JS_PACKAGES:
+                diffs.append(bun_runtime.env_diff())
                 continue
             location = _installed_location(package, lockfile, target)
             if location:

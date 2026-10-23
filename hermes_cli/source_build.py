@@ -2,7 +2,6 @@
 
 import os
 from pathlib import Path
-import shutil
 import subprocess
 import sys
 
@@ -66,11 +65,10 @@ def run_in_custody(project_root: Path, command: list, label: str, **kwargs):
 
 
 def run_source_script(project_root: Path, script: str, *args: str, env: dict, label: str) -> None:
-    command = [shutil.which("node", path=env["PATH"]), str(project_root / script), *args]
-    # npm's deprecation warnings are the loudest lines and never actionable
-    # here; they still land in the failure tail.
-    run_in_custody(project_root, command, label, hide=lambda line: line.lower().startswith("npm warn"),
-                   indent="  ", cwd=project_root, env=env)
+    from pm import bun_runtime
+
+    command = [str(bun_runtime.require()), str(project_root / script), *args]
+    run_in_custody(project_root, command, label, indent="  ", cwd=project_root, env=env)
 
 
 def prepare_source_dependencies(project_root: Path, workspaces: tuple[str, ...], *, env: dict,
@@ -250,13 +248,14 @@ def _build_desktop_product(project_root: Path, env: dict, publish_stage) -> None
         # the in-flight build it queues behind produces the same fresh tree
         # this update needs.
         from hermes_cli.desktop_build_lock import DesktopBuildLock
+        from pm import bun_runtime
 
         build_lock = DesktopBuildLock(project_root)
         build_lock.acquire(wait=True)
         try:
             build_prepared_desktop(
                 desktop_dir, source_mode=False,
-                npm=shutil.which("npm", path=env["PATH"]), env=env, icons=project_root,
+                npm=str(bun_runtime.require()), env=env, icons=project_root,
             )
         finally:
             build_lock.release()

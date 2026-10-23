@@ -185,33 +185,32 @@ def _ensure_tui_workspace(tui_dir: Path) -> None:
         "This usually means `hermes update` left tracked ui-tui files deleted.\n"
         "Recovery:\n"
         "  1. From the Hermes checkout, run `git restore -- ui-tui`\n"
-        "  2. Run `npm install --silent --no-fund --no-audit --progress=false`\n"
+        "  2. Run `bun install --frozen-lockfile`\n"
         "  3. Retry `hermes --tui`\n"
         "If the checkout is still inconsistent, run `hermes update --force`.",
         file=sys.stderr)
     sys.exit(1)
 
 
-def _tui_node_bin(bin: str) -> str:
-    """Resolve the TUI runtime through PM; an explicit bundled HERMES_NODE wins."""
-    if bin == "node":
-        env_node = os.environ.get("HERMES_NODE")
-        if env_node and os.path.isfile(env_node) and os.access(env_node, os.X_OK):
-            return env_node
-    from pm import ensure
-    path = shutil.which(bin, path=ensure(bin).env["PATH"])
-    if not path:
+def _tui_runtime() -> str:
+    """Bun runs the TUI; an explicit bundled HERMES_NODE wins."""
+    env_node = os.environ.get("HERMES_NODE")
+    if env_node and os.path.isfile(env_node) and os.access(env_node, os.X_OK):
+        return env_node
+    from pm import bun_runtime
+
+    binary = bun_runtime.executable()
+    if binary is None:
         print(
-            f"Node.js is required for the TUI but `{bin}` was not found. Install it from "
-            "https://nodejs.org (run `hermes doctor` for the install hint for your OS), then "
+            f"Bun is required for the TUI but was not found. {bun_runtime.INSTALL_HINT}, then "
             "retry `hermes --tui`. To keep working now, run `hermes --cli`."
         )
         sys.exit(1)
-    return path
+    return str(binary)
 
 
 def _make_tui_argv(tui_dir: Path, tui_dev: bool) -> tuple[list[str], Path]:
-    """TUI: --dev → tsx src; else node dist (HERMES_TUI_DIR prebuilt or esbuild)."""
+    """TUI: --dev → bun src; else bun dist (HERMES_TUI_DIR prebuilt or esbuild)."""
 
     # Footgun: --dev against a prebuilt bundle that has no source/node_modules.
     ext_dir = os.environ.get("HERMES_TUI_DIR")
@@ -226,7 +225,7 @@ def _make_tui_argv(tui_dir: Path, tui_dev: bool) -> tuple[list[str], Path]:
     # 1. Prebuilt bundle (nix / packaged release / Docker image): just run it.
     # Must run BEFORE _ensure_tui_workspace(): a prebuilt install ships
     # hermes_cli/tui_dist/entry.js but never ui-tui/ (git checkouts only).
-    # 1. A prebuilt install (Docker image, Nix build, or prior `npm run build`) ships
+    # 1. A prebuilt install (Docker image, Nix build, or prior `bun run build`) ships
     #   hermes_cli/tui_dist/entry.js but never ships ui-tui/ at all (that directory only exists in a git
     #   checkout) — so requiring the workspace to exist first made every prebuilt dashboard Chat tab
     #   connection hard-exit before it ever got a chance to try the bundled entry.js it already has. See
@@ -235,35 +234,33 @@ def _make_tui_argv(tui_dir: Path, tui_dev: bool) -> tuple[list[str], Path]:
         if ext_dir:
             p = Path(ext_dir)
             if (p / "dist" / "entry.js").is_file():
-                return [_tui_node_bin("node"), "--expose-gc", str(p / "dist" / "entry.js")], p
+                return [_tui_runtime(), "--expose-gc", str(p / "dist" / "entry.js")], p
 
         bundled = _find_bundled_tui()
         if bundled is not None:
-            return [_tui_node_bin("node"), "--expose-gc", str(bundled)], bundled.parent
+            return [_tui_runtime(), "--expose-gc", str(bundled)], bundled.parent
 
-    # About to npm install/build from source, so the workspace must exist.
+    # About to install and build from source, so the workspace must exist.
     if not ext_dir:
         _ensure_tui_workspace(tui_dir)
 
     if not tui_dev and not _tui_need_rebuild(tui_dir):
-        return [_tui_node_bin("node"), "--expose-gc", str(tui_dir / "dist/entry.js")], tui_dir
+        return [_tui_runtime(), "--expose-gc", str(tui_dir / "dist/entry.js")], tui_dir
 
     from hermes_cli.source_build import build_source_tui, prepare_launch_dependencies, source_build_env
 
     project_root = tui_dir.parent
     env = source_build_env()
     prepare_launch_dependencies(project_root, env=env)
+    bun = _tui_runtime()
     if tui_dev:
-        # tsx imports @hermes/ink's built exports; the production bundle instead
-        # compiles its source directly through scripts/build/tui.mjs.
-        npm = shutil.which("npm", path=env["PATH"])
-        subprocess.run([npm, "run", "build"], cwd=tui_dir / "packages/hermes-ink", env=env, check=True)
-        tsx = tui_dir / "node_modules/.bin/tsx"
-        return ([str(tsx), "src/entry.tsx"] if tsx.exists() else [npm, "start"]), tui_dir
+        # The dev entry imports @hermes/ink's built exports; the production bundle instead
+        # compiles its source directly through scripts/build/tui.mjs. Bun runs the TSX source.
+        subprocess.run([bun, "run", "build"], cwd=tui_dir / "packages/hermes-ink", env=env, check=True)
+        return [bun, "src/entry.tsx"], tui_dir
 
     build_source_tui(project_root, env=env)
-    node = shutil.which("node", path=env["PATH"])
-    return [node, "--expose-gc", str(tui_dir / "dist/entry.js")], tui_dir
+    return [bun, "--expose-gc", str(tui_dir / "dist/entry.js")], tui_dir
 
 
 def _split_comma_items(items, *, split_non_str: bool = True) -> list[str]:

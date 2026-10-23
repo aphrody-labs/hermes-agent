@@ -1,8 +1,8 @@
-#!/usr/bin/env node
+#!/usr/bin/env bun
 import { execFileSync } from 'node:child_process'
 import { copyFileSync, existsSync, readFileSync, statSync } from 'node:fs'
 import { createRequire } from 'node:module'
-import { dirname, join, relative, resolve } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { parseArgs } from 'node:util'
 
@@ -17,10 +17,12 @@ export function prepareElectronRuntime({ source, install = true, env = process.e
   const packageRoot = dirname(manifest)
   const { version, dependencies } = JSON.parse(readFileSync(manifest, 'utf8'))
   const desktop = JSON.parse(readFileSync(join(source, 'apps/desktop/package.json'), 'utf8'))
-  const lock = JSON.parse(readFileSync(join(source, 'package-lock.json'), 'utf8'))
-  const entry = lock.packages?.[relative(source, packageRoot).split('\\').join('/')]
-  const lockedVersion = entry?.link ? lock.packages[entry.resolved]?.version : entry?.version
-  if (version !== desktop.devDependencies?.electron || version !== lockedVersion) {
+  // bun.lock keys a package by its placement: `electron`, or `<workspace>/electron` when nested.
+  const lock = Bun.JSONC.parse(readFileSync(join(source, 'bun.lock'), 'utf8'))
+  const locked = Object.entries(lock.packages ?? {})
+    .filter(([key]) => key === 'electron' || key.endsWith('/electron'))
+    .map(([, [resolution]]) => resolution)
+  if (version !== desktop.devDependencies?.electron || !locked.includes(`electron@${version}`)) {
     throw new Error('Installed Electron is not the desktop lock-pinned version')
   }
   const binaryName = process.platform === 'darwin' ? 'Electron.app/Contents/MacOS/Electron'

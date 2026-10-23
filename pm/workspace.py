@@ -303,7 +303,7 @@ def install_node_sidecar(
     *,
     explicit: bool = False,
 ) -> Optional[str]:
-    """Install plugin-local dependencies using PM's paired npm/Node context.
+    """Install plugin-local dependencies with Bun, Hermes's JavaScript package manager.
 
     Explicit user consent permits acquisition even when on-demand installs
     are disabled. Returns None on success, otherwise a diagnostic.
@@ -319,17 +319,15 @@ def install_node_sidecar(
     if not explicit and not lazy_installs_allowed():
         return "lazy installs are disabled — run `hermes plugins install` and approve Node dependencies"
 
-    # a lockfile means reproducible `npm ci`; plain `npm install` otherwise
-    install_cmd = ["ci"] if (plugin_dir / "package-lock.json").is_file() else ["install"]
+    # bun.lock means a reproducible frozen install; a package-lock.json is migrated by Bun
+    install_cmd = ["install", "--frozen-lockfile"] if (plugin_dir / "bun.lock").is_file() else ["install"]
     try:
         runner = pm.ensure("npm", explicit=explicit)
-        # Resolve inside the composed context, including npm.cmd on Windows;
-        # CreateProcess does not search a child's replacement PATH itself.
-        npm = shutil.which("npm", path=runner.env.get("PATH", ""))
-        if npm is None:
-            return "npm is missing from the prepared PM environment"
+        from pm import bun_runtime
+
+        bun = str(bun_runtime.require())
         proc = runner.run(
-            [npm, *install_cmd, "--no-audit", "--no-fund"],
+            [bun, *install_cmd],
             cwd=str(plugin_dir),
             capture_output=True,
             text=True,
@@ -338,10 +336,10 @@ def install_node_sidecar(
             timeout=900,
         )
     except Exception as exc:
-        return f"npm {install_cmd[0]} failed to run: {exc}"
+        return f"bun {install_cmd[0]} failed to run: {exc}"
     if proc.returncode != 0:
         tail = (proc.stderr or proc.stdout or "").strip()[-300:]
-        return f"npm {install_cmd[0]} exited {proc.returncode}: {tail}"
+        return f"bun {install_cmd[0]} exited {proc.returncode}: {tail}"
     return None
 
 

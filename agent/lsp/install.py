@@ -213,7 +213,7 @@ def _link_into_bin(target: Path) -> str:
 # Node package manager → argv that installs into ``<staging>/node_modules`` (``lsp.package_manager``).
 # Every manager keeps the staging-dir semantics: nothing touches the user's project or global tree.
 _NODE_PM_ARGV: dict[str, Callable[[str], list]] = {
-    "npm": lambda staging: ["install", "--prefix", staging, "--silent", "--no-fund", "--no-audit"],
+    "npm": lambda staging: ["add", "--cwd", staging, "--silent"],
     "pnpm": lambda staging: ["add", "--dir", staging],
     # Global ``--cwd`` (before the command) is accepted by both Yarn Classic and Yarn Berry; Berry's
     # default PnP linker writes no ``node_modules/.bin``, so the staging dir needs ``nodeLinker: node-modules``.

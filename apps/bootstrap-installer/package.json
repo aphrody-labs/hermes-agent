@@ -13,10 +13,10 @@
     "tauri:build": "tauri build",
     "tauri:build:debug": "tauri build --debug",
     "typecheck": "tsc -p . --noEmit",
-    "check": "npm run typecheck && npm run lint",
+    "check": "bun run typecheck && bun run lint",
     "lint": "eslint src/",
     "lint:fix": "eslint src/ --fix",
-    "fix": "npm run lint:fix"
+    "fix": "bun run lint:fix"
   },
   "dependencies": {
     "@nous-research/ui": "0.18.2",

@@ -189,10 +189,11 @@ def _request(operation, arguments, *, callbacks=None, pause_event=None, project_
 
 def ensure(name, *, base_env=None, explicit=False, verify=True, progress=None, pause_event=None,
            download_progress=None) -> Runner:
+    from pm.bun_runtime import JS_PACKAGES
     from pm.install import env_for
     from pm.registry import get_package
 
-    if is_runtime():
+    if is_runtime() or name in JS_PACKAGES:
         from pm.install import ensure as direct
         return direct(name, base_env=base_env, explicit=explicit, verify=verify, progress=progress,
                       pause_event=pause_event, download_progress=download_progress)

@@ -23,6 +23,7 @@ from pm.package import (
     unpack_deb,
 )
 from pm.registry import register
+from pm.bun_runtime import PROVIDED as BUN_PROVIDES
 from pm.store import ALL_TARGETS, MUSL_TARGETS, Store, current_target, flatten_single_dir, merge_tree
 from pm.update import (
     btbn_index,
@@ -500,6 +501,9 @@ class Nodejs(_BionicDebArm, BinaryPackage, DebPackage):
 
     name = "node"
     binary_rel = {"win32": "node.exe", "posix": "bin/node"}
+
+    def missing_reason(self, target: str) -> Optional[str]:
+        return BUN_PROVIDES
     # The staged .deb's main binary: DebPackage.verify checks it.
     main_bin_rel = "bin/node"
 
@@ -596,6 +600,9 @@ class Npm(BinaryPackage):
     binary_rel = {"win32": "npm.cmd", "posix": "bin/npm"}
     flatten = False
     probe_version = False
+
+    def missing_reason(self, target: str) -> Optional[str]:
+        return BUN_PROVIDES
     url = "https://registry.npmjs.org/npm/-/npm-{version}.tgz"
 
     def unpack(self, archive: Path, staged: Path, target: str) -> None:

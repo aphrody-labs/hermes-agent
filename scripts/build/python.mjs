@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+#!/usr/bin/env bun
 /** Run build helpers with the prepared Python, never an ambient uv environment. */
 import { execFileSync } from 'node:child_process'
 import { pathToFileURL } from 'node:url'

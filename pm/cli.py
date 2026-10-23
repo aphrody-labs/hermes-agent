@@ -661,21 +661,19 @@ def _refresh_uv_lock() -> int:
 
 
 def _refresh_npm_lock() -> int:
+    from pm import bun_runtime
     from pm.install import env_for, installed_package
-    from pm.packages import npm_env
-    from pm.paths import writable_store_root
 
     npm = installed_package("npm")
     node = installed_package("node")
     if npm is None or npm.binary is None or node is None or node.binary is None:
-        print("✗ npm or Node: not installed; run `hermes pm install`")
+        print(f"✗ Bun: not found; {bun_runtime.INSTALL_HINT}")
         return 1
-    env = npm_env(writable_store_root() / ".npm-cache", env_for("npm"))
-    code, tail = _run_live([str(npm.binary), "update"], cwd=str(repo_root()), env=env)
+    code, tail = _run_live([str(npm.binary), "update"], cwd=str(repo_root()), env=env_for("npm"))
     if code != 0:
-        print(f"✗ npm update failed:\n{tail}")
+        print(f"✗ bun update failed:\n{tail}")
         return 1
-    print("✓ package-lock.json refreshed")
+    print("✓ bun.lock refreshed")
     return 0
 
 

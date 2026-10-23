@@ -271,8 +271,8 @@ def _sidecar_deps_stale() -> bool:
 def _reinstall_sidecar_deps() -> None:
     """Reinstall the sidecar's node_modules from the lockfile (blocking).
 
-    Mirrors ``hermes photon install-sidecar``: ``npm ci`` for an exact,
-    reproducible install, falling back to ``npm install`` if the lockfile is
+    Mirrors ``hermes photon install-sidecar``: ``bun install --frozen-lockfile`` for an
+    exact, reproducible install, falling back to ``bun install`` if the lockfile is
     missing or drifted. Runs the postinstall patch as part of the install.
     Best-effort — a failure here just leaves the (stale) deps in place and the
     normal ``_start_sidecar`` readiness check reports the real error.
@@ -293,14 +293,14 @@ def _reinstall_sidecar_deps() -> None:
         return
     from hermes_cli._subprocess_compat import windows_hide_flags  # no console flash on Windows
 
-    def _run(verb: str) -> subprocess.CompletedProcess:
+    def _run(*verb: str) -> subprocess.CompletedProcess:
         return subprocess.run(
-            [npm, verb], stdin=subprocess.DEVNULL, cwd=str(_sidecar_dir()), capture_output=True, text=True, encoding="utf-8",
+            [npm, *verb], stdin=subprocess.DEVNULL, cwd=str(_sidecar_dir()), capture_output=True, text=True, encoding="utf-8",
             errors="replace", check=False, env=env, timeout=_NPM_REINSTALL_TIMEOUT, creationflags=windows_hide_flags())
     try:
-        result = _run("ci")
+        result = _run("install", "--frozen-lockfile")
         if result.returncode != 0:
-            logger.warning("[photon] sidecar `npm ci` failed; falling back to `npm install`")
+            logger.warning("[photon] sidecar frozen install failed; falling back to `bun install`")
             result = _run("install")
     except subprocess.TimeoutExpired:  # retried on the next reconnect tick
         logger.error("[photon] sidecar dependency reinstall timed out after %ss", _NPM_REINSTALL_TIMEOUT)
@@ -1004,7 +1004,7 @@ class PhotonAdapter(BasePlatformAdapter):
                 raise PhotonSidecarStartupError(
                     f"Photon sidecar deps could not be installed into "
                     f"{_sidecar_dir()} (see log for the npm error). "
-                    f"Run: cd {_sidecar_dir()} && npm ci   (or `hermes photon setup`)",
+                    f"Run: cd {_sidecar_dir()} && bun install --frozen-lockfile   (or `hermes photon setup`)",
                     code="SIDECAR_DEPS_MISSING", retryable=False)
         # `hermes update` bumps the lockfile without reinstalling node_modules; the sidecar
         # would spawn against stale deps and die on every reconnect.

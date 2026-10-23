@@ -94,7 +94,7 @@ def _whatsapp_allowed_users(wa_mode: str, get_env_value, save_env_value) -> None
 
 
 def _whatsapp_install_bridge(bridge_dir) -> bool:
-    """Step 4 of ``hermes whatsapp``: ``npm install`` the bridge when needed. False = stop."""
+    """Step 4 of ``hermes whatsapp``: ``bun install`` the bridge when needed. False = stop."""
     from hermes_constants import find_node_executable, with_hermes_node_path
     if (bridge_dir / "node_modules").exists():
         print("✓ Bridge dependencies already installed")
@@ -109,10 +109,10 @@ def _whatsapp_install_bridge(bridge_dir) -> bool:
             env = pm.ensure("npm", explicit=True).env
             installed = pm.installed_package("npm")
             if installed is None or installed.binary is None:
-                raise pm.InstallError("npm", "npm binary is missing after preparation")
+                raise pm.InstallError("bun", "Bun is missing after preparation")
             npm = str(installed.binary)
         result = subprocess.run(
-            [npm, "install", "--no-fund", "--no-audit", "--progress=false"],
+            [npm, "install", "--no-progress"],
             cwd=str(bridge_dir), stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True,
             encoding="utf-8", errors="replace", env=env, check=False)
     except (pm.InstallError, OSError) as exc:
@@ -124,7 +124,7 @@ def _whatsapp_install_bridge(bridge_dir) -> bool:
     if result.returncode != 0:
         err = (result.stderr or "").strip()
         preview = "\n".join(err.splitlines()[-30:]) if err else "(no output)"
-        _say("  ✗ npm install failed:", preview)
+        _say("  ✗ bun install failed:", preview)
         return False
     print("  ✓ Dependencies installed")
     return True
@@ -192,10 +192,10 @@ def cmd_whatsapp(args):
             pm.ensure("node", explicit=True)
             installed = pm.installed_package("node")
             if installed is None or installed.binary is None:
-                raise pm.InstallError("node", "Node.js binary is missing after preparation")
+                raise pm.InstallError("bun", "Bun is missing after preparation")
             node = str(installed.binary)
         except pm.InstallError as exc:
-            print(f"  ✗ Node.js preparation failed: {exc}")
+            print(f"  ✗ Bun preparation failed: {exc}")
             return
     with contextlib.suppress(KeyboardInterrupt):
         subprocess.run(

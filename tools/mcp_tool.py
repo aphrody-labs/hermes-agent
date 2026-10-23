@@ -24,7 +24,7 @@ from typing import Any, Callable, Dict, List, Optional, Set
 logger = logging.getLogger(__name__)
 
 from tools.mcp_tool_common import _DEFAULT_TOOL_TIMEOUT, mcp_field
-from tools.mcp_tool_config import _get_mcp_stderr_log, _npx_cached_bin, _packaged_npx_entry
+from tools.mcp_tool_config import _get_mcp_stderr_log
 from tools.mcp_tool_sampling import ElicitationHandler, SamplingHandler
 from tools.mcp_tool_transport import MCPServerTransportMixin
 from tools.mcp_tool_server_run import MCPServerRunMixin
@@ -53,21 +53,12 @@ async def _preflight_stdio_command(server_name: str, command: str, args: list) -
     if malware_error:
         raise ValueError(f"MCP server '{server_name}': {malware_error}")
 
-    # npx resolves the package and then FORKS, staying resident as the real server's parent for
-    # nothing (~48 MB per server, measured). Hermes already supervises the child (shared death
-    # supervisor), so a cached package is spawned directly; a cache miss leaves npx untouched.
+    # Bun runs npx packages: `bun x` accepts the package spec and its arguments, and never prompts.
     if os.path.basename(command).lower().startswith("npx"):
-        # A sealed Windows payload's own npx cannot start its node through cmd.exe.
-        packaged = await asyncio.to_thread(_packaged_npx_entry, command, args)
-        if packaged:
-            logger.debug("MCP server '%s': running %s on the packaged node", server_name, packaged[1][0])
-            return packaged
-        cached = _npx_cached_bin(args)
-        if cached:
-            direct_command, direct_args = cached
-            logger.debug("MCP server '%s': using cached npx binary %s (skipping the "
-                         "resident `npm exec` parent)", server_name, direct_command)
-            command, args = direct_command, direct_args
+        from pm import bun_runtime
+
+        command = str(bun_runtime.require())
+        args = ["x", *(arg for arg in args if arg not in ("-y", "--yes"))]
     return command, args
 
 
