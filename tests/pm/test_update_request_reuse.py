@@ -47,7 +47,7 @@ def upstream(dl_server, monkeypatch):
     return calls, failures
 
 
-@pytest.mark.parametrize("name", ["npm", "node", "uv", "python", "llamacpp-cpu", "ffmpeg"])
+@pytest.mark.parametrize("name", ["uv", "python", "llamacpp-cpu", "ffmpeg"])
 def test_resolution_reuses_successful_responses_but_refreshes_next_operation(upstream, monkeypatch, tmp_path, name):
     calls, failures = upstream
     package = get_package(name)
@@ -193,36 +193,3 @@ def test_llama_real_index_fallback(upstream, monkeypatch, pointer, tree, expecte
     assert all(auth is None for _, auth in calls)
     assert any(path == github for path, _ in calls) is (pointer != "b10679\n")
 
-
-def test_pinning_hashes_new_npm_url_once_and_keeps_existing_rows(upstream, tmp_path, monkeypatch):
-    calls, failures = upstream
-    monkeypatch.setenv("HERMES_RUNTIME_DIR", str(tmp_path / "store"))
-    package = packages.Npm()
-    version = "2.0.0"
-    artifact_url = package.fetch_url(version, ALL_TARGETS[0])
-    artifact_path = urlsplit(artifact_url).path
-    filename, digest = make_tar(tmp_path, "npm.tgz", {"package/package.json": '{"version":"2.0.0"}'})
-    RangeHandler.payloads[artifact_path] = (tmp_path / filename).read_bytes()
-    old = {"url": package.fetch_url("1.0.0", ALL_TARGETS[0]), "sha256": "a" * 64}
-    current = {"any": old, "unresolved-target": old}
-    decision = update.Resolved("npm", "1.0.0", "semver", version,
-                               per_target=dict.fromkeys(ALL_TARGETS, version))
-    pinned = cli._pin_artifacts(package, decision, current)
-    assert current == {"any": old, "unresolved-target": old}
-    assert pinned == {**current, **{key: {"url": artifact_url, "sha256": digest} for key in ALL_TARGETS}}
-    assert Counter(path for path, _ in calls) == {artifact_path: 1}
-
-    # Existing pins need no download; a separate pin invocation must not retain new hashes.
-    calls.clear()
-    assert cli._pin_artifacts(package, decision, pinned) == pinned
-    assert not calls
-    replacement = b"changed upstream bytes"
-    RangeHandler.payloads[artifact_path] = replacement
-    failures[artifact_path] = [404]
-    with pytest.raises(HTTPError, match="404"):
-        cli._pin_artifacts(package, decision, current)
-    assert current == {"any": old, "unresolved-target": old}
-    calls.clear()
-    repinned = cli._pin_artifacts(package, decision, current)
-    assert repinned[ALL_TARGETS[-1]]["sha256"] == hashlib.sha256(replacement).hexdigest()
-    assert Counter(path for path, _ in calls) == {artifact_path: 1}

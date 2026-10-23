@@ -72,7 +72,7 @@ ENTRY = "stage-test-1.0-linux-arm64-bionic"
 
 
 @pytest.mark.parametrize("name,relative", [
-    ("python", "bin/python3.14"), ("uv", "bin/uv"), ("node", "bin/node"),
+    ("python", "bin/python3.14"), ("uv", "bin/uv"),
 ])
 def test_bionic_deb_stages_real_packages_without_host_execution(tmp_path, monkeypatch, name, relative):
     from pm import paths

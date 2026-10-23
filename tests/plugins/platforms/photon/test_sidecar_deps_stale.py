@@ -1,7 +1,7 @@
 """Regression tests for the Photon sidecar stale-dependency self-heal.
 
 A `hermes update` that bumps the spectrum-ts pin rewrites the sidecar's
-``package-lock.json`` but never reinstalls ``node_modules``, so the sidecar
+``bun.lock`` but never reinstalls ``node_modules``, so the sidecar
 spawns against stale deps and dies on every reconnect. ``_sidecar_deps_stale``
 detects that skew (lockfile newer than npm's install marker) so
 ``_start_sidecar`` can reinstall before spawning.
@@ -17,13 +17,13 @@ from plugins.platforms.photon import sidecar_paths
 
 
 def _seed(sidecar: Path, *, lock_mtime: float, marker_mtime: float | None) -> None:
-    """Create a fake sidecar dir with a lockfile and (optionally) npm's marker."""
+    """Create a fake sidecar dir with a lockfile and (optionally) the install marker."""
     (sidecar / "node_modules").mkdir(parents=True)
-    lock = sidecar / "package-lock.json"
+    lock = sidecar / "bun.lock"
     lock.write_text("{}", encoding="utf-8")
     os.utime(lock, (lock_mtime, lock_mtime))
     if marker_mtime is not None:
-        marker = sidecar / "node_modules" / ".package-lock.json"
+        marker = sidecar / "node_modules" / ".hermes-installed"
         marker.write_text("{}", encoding="utf-8")
         os.utime(marker, (marker_mtime, marker_mtime))
 
