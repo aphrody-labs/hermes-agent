@@ -419,12 +419,13 @@ def _script_argv(
     / ``_windows_cron_python_invocation``. Interpreter selection reads PM's install records and
     may raise; callers run this inside their ``try``."""
     if path.suffix.lower() in {".sh", ".bash"}:
-        # which() finds Git Bash on Windows; None there → clear error instead of a "[WinError 2]".
-        _bash = shutil.which("bash") or ("/bin/bash" if os.path.isfile("/bin/bash") else None)
+        # pm.shell.bash() skips the System32 WSL stub and honours HERMES_BASH / niubash.
+        from pm.shell import bash as _resolve_bash
+        _bash = _resolve_bash()
         if _bash is None:
             return None, {}, (
                 f"Cannot run .sh/.bash script {path.name!r}: bash not found on PATH. "
-                "On Windows, install Git for Windows (which ships Git Bash) "
+                "On Windows, set HERMES_BASH, install niubash or Git for Windows, "
                 "or rewrite the script as Python (.py)."
             )
         return [_bash, str(path)], {}, None

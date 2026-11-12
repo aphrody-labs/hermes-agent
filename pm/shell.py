@@ -72,6 +72,8 @@ def windows_bash_candidates(on_path: str | None, env: Mapping[str, str]) -> list
     precedes Git on most PATHs (#116818)."""
     programfiles = env.get("ProgramFiles", r"C:\Program Files")
     candidates = []
+    if env.get("HERMES_BASH"):
+        candidates.append(env["HERMES_BASH"])
     if env.get("HERMES_GIT_BASH_PATH"):
         candidates.append(env["HERMES_GIT_BASH_PATH"])
     roots = [ntpath.join(programfiles, "Git")]
@@ -80,6 +82,10 @@ def windows_bash_candidates(on_path: str | None, env: Mapping[str, str]) -> list
     if env.get("LOCALAPPDATA"):
         roots.extend((ntpath.join(env["LOCALAPPDATA"], "hermes", "git"),
                       ntpath.join(env["LOCALAPPDATA"], "Programs", "Git")))
+    if env.get("LOCALAPPDATA"):
+        # niubash: native Win32 bash (no MSYS runtime), per-user install.
+        candidates.append(ntpath.join(env["LOCALAPPDATA"], "Programs", "Niubash",
+                                      "winuxcmd", "bin", "bash.exe"))
     for root in roots:
         candidates.extend((ntpath.join(root, "bin", "bash.exe"),
                            ntpath.join(root, "usr", "bin", "bash.exe")))
@@ -105,6 +111,9 @@ def _bash_starts(candidate: str) -> bool:
 
 def bash() -> str | None:
     """Resolve the bash binary to use, or None if none is available."""
+    override = os.environ.get("HERMES_BASH")
+    if override and os.path.isfile(override) and _bash_starts(override):
+        return override
     staged = _staged_bash()
     if staged and _bash_starts(staged):
         return staged

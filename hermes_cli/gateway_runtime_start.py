@@ -81,7 +81,10 @@ def spawn_unmanaged_gateway(profile_home: Path, *, deadline: float, idle_exit: b
     from hermes_dir_acl import TOKEN_ELEVATION_TYPE_DEFAULT, process_elevation_type, process_is_elevated
     # Only a split (UAC) token has a normal twin to lock out. With none (UAC off, the built-in
     # Administrator) every window of this user is elevated and attaches to this gateway.
-    if process_is_elevated() and process_elevation_type() != TOKEN_ELEVATION_TYPE_DEFAULT:
+    # HERMES_ALLOW_ELEVATED_GATEWAY=1: opt-in for elevated harnesses (CI, agent runners) that use
+    # their own HERMES_HOME and never share the gateway with a normal window.
+    if (process_is_elevated() and process_elevation_type() != TOKEN_ELEVATION_TYPE_DEFAULT
+            and os.environ.get("HERMES_ALLOW_ELEVATED_GATEWAY") != "1"):
         raise RuntimeStartError("client_elevated", detail=CLIENT_ELEVATED_REMEDY)
     home = profile_home.resolve()
     root = Path(__file__).resolve().parent.parent

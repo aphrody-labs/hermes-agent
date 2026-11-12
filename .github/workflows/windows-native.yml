@@ -1,0 +1,27 @@
+name: windows-native
+on:
+  push:
+    branches: [windows-native]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv sync
+      - run: uv pip install pytest pytest-asyncio
+      - name: shell resolution, cron scripts, gateway start guard
+        shell: pwsh
+        run: uv run --no-sync python -m pytest -q -p no:cacheprovider tests/cron/test_cron_script.py tests/cron/test_scheduler.py (Get-ChildItem tests -Recurse -Filter '*shell*.py' | ForEach-Object FullName)
+      - name: cron .sh via HERMES_BASH
+        shell: pwsh
+        env:
+          HERMES_HOME: ${{ runner.temp }}\hh
+        run: |
+          $env:HERMES_BASH = "$env:ProgramFiles\Git\bin\bash.exe"
+          uv run --no-sync python -c "import pm.shell as s, os; b=s.bash(); print(b); assert b == os.environ['HERMES_BASH']"
